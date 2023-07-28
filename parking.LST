@@ -1,0 +1,674 @@
+C51 COMPILER V8.16   PARKING                                                               01/10/2023 15:56:31 PAGE 1   
+
+
+C51 COMPILER V8.16, COMPILATION OF MODULE PARKING
+OBJECT MODULE PLACED IN parking.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE parking.c BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include <at89c51rc2.h>
+   2          #include <intrins.h>
+   3          /*
+   4          P2_0 - motor za spustanje
+   5          P2_1 - motor za podizanje
+   6          
+   7          P2_2 - rampa spustena
+   8          P2_3 - rampa podignuta
+   9          */
+  10          
+  11          //Komande za displej
+  12          #define LCD_EN P3_2
+  13          #define LCD_RS P3_3
+  14          #define LCD_DB7 P1_0
+  15          #define LCD_DB6 P1_1
+  16          #define LCD_DB5 P1_2
+  17          #define LCD_DB4 P1_3
+  18          #define LCD_BL P1_4
+  19          
+  20          char *greska="Error\r\n";
+  21          char *ok="Okej\r\n";
+  22          char *pokZaSlanje;
+  23          char buffer[10];
+  24          char buffer_it=0;
+  25          int mesto=5;
+  26          unsigned char ulaz=0;
+  27          unsigned char izlaz=0;
+  28          char *pomocna;
+  29          
+  30          char* num2str(int broj)
+  31          {   
+  32   1          char str[9];
+  33   1              unsigned int i=0;
+  34   1              unsigned int k=0;
+  35   1              unsigned int ostatak=0;
+  36   1              char pom[9];
+  37   1              char* pok_pom=pom;
+  38   1          char* pok=str;      
+  39   1              do{
+  40   2                      ostatak=broj%10;
+  41   2                      broj=(broj/10);
+  42   2                      *pok_pom=ostatak+48;
+  43   2                      pok_pom++;
+  44   2                      i++;
+  45   2              }while(broj!=0);
+  46   1                      *pok_pom='\0';
+  47   1      
+  48   1              while(i>0)
+  49   1              {
+  50   2              pok_pom--;
+  51   2              str[k]=*pok_pom;
+  52   2              ++k;
+  53   2              --i;
+  54   2              }
+  55   1              str[k]='\0';
+C51 COMPILER V8.16   PARKING                                                               01/10/2023 15:56:31 PAGE 2   
+
+  56   1              return pok;                             
+  57   1      }
+  58          
+  59          void initP1P3(void) {                   
+  60   1      
+  61   1              P1=0xE0;
+  62   1              P3=0xF9;
+  63   1      }
+  64          
+  65          void wait1sec()
+  66          {
+  67   1              unsigned char i;
+  68   1      
+  69   1              TMOD = (TMOD&0xF0)|0x01;        
+  70   1              
+  71   1              for(i=0;i<200;i++) {
+  72   2      
+  73   2                      TH0=0xEE;                               
+  74   2                      TL0=0x00;                               
+  75   2                      TR0=1;                                  
+  76   2                      while(!TF0) {}            
+  77   2                              TF0=0;                           
+  78   2              }
+  79   1      }
+  80          
+  81          void wait50us()
+  82          {
+  83   1              TH0=0xFF;
+  84   1              TL0=0xD2;
+  85   1      
+  86   1              TR0=1;
+  87   1      
+  88   1              while(!TF0)
+  89   1              {
+  90   2      
+  91   2              }
+  92   1              TF0=0;
+  93   1      }
+  94          
+  95          void wait2ms()
+  96          {
+  97   1              TH0=0xF8;
+  98   1              TL0=0xCD;
+  99   1      
+ 100   1              TR0=1;
+ 101   1      
+ 102   1              while(!TF0)
+ 103   1              {
+ 104   2      
+ 105   2              }
+ 106   1              TF0=0;
+ 107   1      }
+ 108          
+ 109          void wait4ms()
+ 110          {
+ 111   1              wait2ms();
+ 112   1              wait2ms();      
+ 113   1      }
+ 114          
+ 115          void wait5sec()
+ 116          {
+ 117   1              wait1sec();
+C51 COMPILER V8.16   PARKING                                                               01/10/2023 15:56:31 PAGE 3   
+
+ 118   1              wait1sec();
+ 119   1              wait1sec();
+ 120   1              wait1sec();
+ 121   1              wait1sec();
+ 122   1      }
+ 123          
+ 124          bit getbit(unsigned char n,unsigned char k)
+ 125          {
+ 126   1              unsigned char mask=1<<k;
+ 127   1              unsigned char masked_n=n&mask;
+ 128   1              bit thebit=masked_n>>k;
+ 129   1              return thebit;
+ 130   1      }
+ 131          
+ 132          void writeChar(unsigned char karakter)
+ 133          {
+ 134   1              LCD_EN=1;
+ 135   1              LCD_RS=1;
+ 136   1              LCD_DB7=getbit(karakter,7);
+ 137   1              LCD_DB6=getbit(karakter,6);
+ 138   1              LCD_DB5=getbit(karakter,5);
+ 139   1              LCD_DB4=getbit(karakter,4);
+ 140   1              LCD_EN=0;
+ 141   1              _nop_();
+ 142   1              LCD_EN=1;
+ 143   1              LCD_DB7=getbit(karakter,3);
+ 144   1              LCD_DB6=getbit(karakter,2);
+ 145   1              LCD_DB5=getbit(karakter,1);
+ 146   1              LCD_DB4=getbit(karakter,0);
+ 147   1              LCD_EN=0;
+ 148   1              wait50us();
+ 149   1      }
+ 150          
+ 151          void writeLine(char *str)
+ 152          {
+ 153   1              char i=0;
+ 154   1              while(*(str+i)!='\0')
+ 155   1              {
+ 156   2                      writeChar(*(str+i));
+ 157   2                      i++;
+ 158   2              }
+ 159   1      }
+ 160          
+ 161          void clearDisplay() {                           
+ 162   1          LCD_RS=0;             
+ 163   1              LCD_EN=1;
+ 164   1              LCD_DB7=0;
+ 165   1              LCD_DB6=0;
+ 166   1              LCD_DB5=0;
+ 167   1              LCD_DB4=0;
+ 168   1              LCD_EN=0;
+ 169   1              
+ 170   1              _nop_();
+ 171   1      
+ 172   1              LCD_RS=0;                 
+ 173   1              LCD_EN=1;
+ 174   1              LCD_DB7=0;
+ 175   1              LCD_DB6=0;
+ 176   1              LCD_DB5=0;
+ 177   1              LCD_DB4=1;
+ 178   1              LCD_EN=0;
+ 179   1              wait2ms();
+C51 COMPILER V8.16   PARKING                                                               01/10/2023 15:56:31 PAGE 4   
+
+ 180   1              wait2ms();
+ 181   1      
+ 182   1      }
+ 183          
+ 184          void newLine() {                                                
+ 185   1              LCD_RS=0;
+ 186   1              LCD_EN=1;       
+ 187   1              LCD_DB7=1;
+ 188   1              LCD_DB6=1;
+ 189   1              LCD_DB5=0;
+ 190   1              LCD_DB4=0;
+ 191   1              LCD_EN=0;
+ 192   1              _nop_();
+ 193   1              LCD_EN=1;
+ 194   1              LCD_DB7=0;
+ 195   1              LCD_DB6=0;
+ 196   1              LCD_DB5=0;
+ 197   1              LCD_DB4=0;
+ 198   1              LCD_EN=0;
+ 199   1              wait2ms();
+ 200   1              wait2ms();
+ 201   1      }
+ 202          
+ 203          void inicijalizacija()
+ 204          {
+ 205   1              initP1P3();
+ 206   1      
+ 207   1              wait1sec();
+ 208   1      
+ 209   1              LCD_EN=1;
+ 210   1              LCD_RS=0;
+ 211   1      
+ 212   1              LCD_DB7=0;
+ 213   1              LCD_DB6=0;
+ 214   1              LCD_DB4=0;
+ 215   1              LCD_DB5=1;
+ 216   1              LCD_EN=0;
+ 217   1      
+ 218   1              wait50us();
+ 219   1      
+ 220   1              LCD_EN=1;
+ 221   1              LCD_RS=0;
+ 222   1              LCD_DB7=0;
+ 223   1              LCD_DB6=0;
+ 224   1              LCD_DB4=0;
+ 225   1              LCD_DB5=1;
+ 226   1              LCD_EN=0;
+ 227   1              _nop_();
+ 228   1              LCD_EN=1;
+ 229   1              LCD_RS=0;
+ 230   1              LCD_DB7=1;
+ 231   1              LCD_DB6=0;
+ 232   1              LCD_DB4=0;
+ 233   1              LCD_DB5=0;
+ 234   1              LCD_EN=0;
+ 235   1      
+ 236   1              wait50us();
+ 237   1      
+ 238   1              LCD_EN=1;
+ 239   1              LCD_RS=0;
+ 240   1              LCD_DB7=0;
+ 241   1              LCD_DB6=0;
+C51 COMPILER V8.16   PARKING                                                               01/10/2023 15:56:31 PAGE 5   
+
+ 242   1              LCD_DB4=0;
+ 243   1              LCD_DB5=0;
+ 244   1              LCD_EN=0;
+ 245   1              _nop_();
+ 246   1              LCD_EN=1;
+ 247   1              LCD_RS=0;
+ 248   1              LCD_DB7=1;
+ 249   1              LCD_DB6=1;
+ 250   1              LCD_DB4=1;
+ 251   1              LCD_DB5=1;
+ 252   1              LCD_EN=0;
+ 253   1      
+ 254   1              wait50us();
+ 255   1      
+ 256   1              LCD_EN=1;
+ 257   1              LCD_RS=0;
+ 258   1              LCD_DB7=0;
+ 259   1              LCD_DB6=0;
+ 260   1              LCD_DB4=0;
+ 261   1              LCD_DB5=0;
+ 262   1              LCD_EN=0;
+ 263   1              _nop_();
+ 264   1              LCD_EN=1;
+ 265   1              LCD_RS=0;
+ 266   1              LCD_DB7=0;
+ 267   1              LCD_DB6=0;
+ 268   1              LCD_DB4=1;
+ 269   1              LCD_DB5=0;
+ 270   1              LCD_EN=0;
+ 271   1      
+ 272   1              wait4ms();
+ 273   1      
+ 274   1              LCD_EN=1;
+ 275   1              LCD_RS=0;
+ 276   1              LCD_DB7=0;
+ 277   1              LCD_DB6=0;
+ 278   1              LCD_DB4=0;
+ 279   1              LCD_DB5=0;
+ 280   1              LCD_EN=0;
+ 281   1              _nop_();
+ 282   1              LCD_EN=1;
+ 283   1              LCD_RS=0;
+ 284   1              LCD_DB7=0;
+ 285   1              LCD_DB6=1;
+ 286   1              LCD_DB4=0;
+ 287   1              LCD_DB5=1;
+ 288   1              LCD_EN=0;
+ 289   1      
+ 290   1              wait50us();
+ 291   1              wait2ms();
+ 292   1      
+ 293   1              LCD_BL=1;
+ 294   1      }
+ 295          
+ 296          void parsirajPoruku()
+ 297          {
+ 298   1              if(buffer[0]=='(' && buffer[1]=='p' && buffer[2]==':' && buffer[3]>='0' && buffer[3]<='1' && buffer[4]>=
+             -'0' && buffer[4]<='9' && buffer[5]==')')
+ 299   1              {
+ 300   2                      if(buffer[3]=='0')
+ 301   2                      {
+ 302   3                              mesto=(int)(buffer[4])-48;
+C51 COMPILER V8.16   PARKING                                                               01/10/2023 15:56:31 PAGE 6   
+
+ 303   3                              //pokZaSlanje=num2str(mesto);
+ 304   3                      }
+ 305   2                      else if(buffer[4]>='6')
+ 306   2                      {
+ 307   3                              pokZaSlanje=greska;             
+ 308   3                      }
+ 309   2                      else
+ 310   2                      {
+ 311   3                              mesto=10 + ((int)(buffer[4])-48);                       
+ 312   3                              //pokZaSlanje=num2str(mesto);
+ 313   3                      }
+ 314   2      
+ 315   2                      switch(mesto)
+ 316   2                      {
+ 317   3                              case 0:
+ 318   3                                      pokZaSlanje="0\r\n";
+ 319   3                                      break;
+ 320   3                              case 1:
+ 321   3                                      pokZaSlanje="1\r\n";
+ 322   3                                      break;
+ 323   3                              case 2:
+ 324   3                                      pokZaSlanje="2\r\n";
+ 325   3                                      break;
+ 326   3                              case 3:
+ 327   3                                      pokZaSlanje="3\r\n";
+ 328   3                                      break;
+ 329   3                              case 4:
+ 330   3                                      pokZaSlanje="4\r\n";
+ 331   3                                      break;
+ 332   3                              case 5:
+ 333   3                                      pokZaSlanje="5\r\n";
+ 334   3                                      break;
+ 335   3                              case 6:
+ 336   3                                      pokZaSlanje="6\r\n";
+ 337   3                                      break;
+ 338   3                              case 7:
+ 339   3                                      pokZaSlanje="7\r\n";
+ 340   3                                      break;
+ 341   3                              case 8:
+ 342   3                                      pokZaSlanje="8\r\n";
+ 343   3                                      break;
+ 344   3                              case 9:
+ 345   3                                      pokZaSlanje="9\r\n";
+ 346   3                                      break;
+ 347   3                              case 10:
+ 348   3                                      pokZaSlanje="10\r\n";
+ 349   3                                      break;
+ 350   3                              case 11:
+ 351   3                                      pokZaSlanje="11\r\n";
+ 352   3                                      break;
+ 353   3                              case 12:
+ 354   3                                      pokZaSlanje="12\r\n";
+ 355   3                                      break;
+ 356   3                              case 13:
+ 357   3                                      pokZaSlanje="13\r\n";
+ 358   3                                      break;
+ 359   3                              case 14:
+ 360   3                                      pokZaSlanje="14\r\n";
+ 361   3                                      break;
+ 362   3                              case 15:
+ 363   3                                      pokZaSlanje="15\r\n";
+ 364   3                                      break;
+C51 COMPILER V8.16   PARKING                                                               01/10/2023 15:56:31 PAGE 7   
+
+ 365   3                              default:
+ 366   3                                      pokZaSlanje=greska;
+ 367   3                      }
+ 368   2      
+ 369   2                      clearDisplay();
+ 370   2                      writeLine("Mesta:\0");
+ 371   2                      newLine();
+ 372   2                      writeChar(buffer[3]);
+ 373   2                      writeChar(buffer[4]);
+ 374   2              }
+ 375   1      
+ 376   1              else
+ 377   1              {
+ 378   2                      pokZaSlanje=greska;
+ 379   2              }
+ 380   1      
+ 381   1              SBUF=*pokZaSlanje;
+ 382   1              buffer[0]='\0';
+ 383   1              buffer_it=0;
+ 384   1      }
+ 385          
+ 386          void serijski_prekid(void) interrupt 4
+ 387          {
+ 388   1              if(TI)
+ 389   1              {
+ 390   2                      TI=0;
+ 391   2                      pokZaSlanje++;
+ 392   2                      if(*pokZaSlanje!='\0')
+ 393   2                      {
+ 394   3                      SBUF=*pokZaSlanje;
+ 395   3                      }
+ 396   2              }
+ 397   1              if(RI)
+ 398   1              {
+ 399   2                      char prijem;
+ 400   2                      RI=0;
+ 401   2                      prijem=SBUF;
+ 402   2      
+ 403   2                      if(prijem=='(')
+ 404   2                      {
+ 405   3                              buffer_it=0;
+ 406   3                      }
+ 407   2      
+ 408   2                      buffer[buffer_it]=prijem;
+ 409   2                      buffer_it=(buffer_it+1)%10;
+ 410   2      
+ 411   2                      if(prijem==')')
+ 412   2                      {
+ 413   3                              parsirajPoruku();
+ 414   3                      }
+ 415   2              }
+ 416   1      }
+ 417          
+ 418          void ispis()
+ 419          {
+ 420   1              pomocna=num2str(mesto);
+ 421   1              clearDisplay();
+ 422   1              writeLine("Mesta:\0");
+ 423   1              newLine();
+ 424   1              writeLine(pomocna);
+ 425   1      }
+ 426          
+C51 COMPILER V8.16   PARKING                                                               01/10/2023 15:56:31 PAGE 8   
+
+ 427          void provera()
+ 428          {
+ 429   1                      //Taster za ulazak
+ 430   1                      if(P0_0==0)
+ 431   1                      {
+ 432   2                              ulaz=1;
+ 433   2                      }
+ 434   1                      else
+ 435   1                      {
+ 436   2                              ulaz=0;
+ 437   2                      }
+ 438   1      
+ 439   1                      //Taster za izlazak
+ 440   1                      if(P0_1==0)
+ 441   1                      {
+ 442   2                              izlaz=1;
+ 443   2                      }
+ 444   1                      else
+ 445   1                      {
+ 446   2                              izlaz=0;
+ 447   2                      }
+ 448   1      }
+ 449          
+ 450          void provera_mesta()
+ 451          {
+ 452   1              if(mesto<=0)
+ 453   1                              {
+ 454   2                                      mesto=0;
+ 455   2                                      izlaz=0;
+ 456   2                                      P2=0x04;
+ 457   2                              }
+ 458   1      
+ 459   1                              if(mesto>=15)
+ 460   1                              {
+ 461   2                                      mesto=15;
+ 462   2                                      ulaz=0;
+ 463   2                                      P2=0x04;        
+ 464   2                              }
+ 465   1      }
+ 466          
+ 467          void main(void)
+ 468          {
+ 469   1              //Inicijalizacija
+ 470   1              inicijalizacija();
+ 471   1              SCON=0x50;
+ 472   1              PCON=0x80;
+ 473   1              BDRCON=0x1C;
+ 474   1              BRL=253; 
+ 475   1              EA=1;
+ 476   1              ES=1;
+ 477   1              //na pocetku spustena
+ 478   1              P2=0x04;
+ 479   1              P0=0xFF;
+ 480   1                      
+ 481   1              while(1)
+ 482   1              {
+ 483   2                              provera();
+ 484   2                              provera_mesta();
+ 485   2      
+ 486   2                      //Izlazak iz parkinga
+ 487   2                      if(izlaz==1 && mesto>0)
+ 488   2                      {
+C51 COMPILER V8.16   PARKING                                                               01/10/2023 15:56:31 PAGE 9   
+
+ 489   3                              //podizanje
+ 490   3                              P2_0=0;
+ 491   3                              P2_1=1;
+ 492   3                              P2_2=0;
+ 493   3                              P2_3=0;
+ 494   3                              wait1sec();
+ 495   3                              wait1sec();
+ 496   3                              //stiglo do vrha
+ 497   3                              P2_0=0;
+ 498   3                              P2_1=0;
+ 499   3                              P2_2=0;
+ 500   3                              P2_3=1; 
+ 501   3      
+ 502   3                              wait5sec();
+ 503   3                              provera();
+ 504   3      
+ 505   3                              mesto=mesto-1;
+ 506   3                              provera_mesta();
+ 507   3                              ispis();
+ 508   3      
+ 509   3                              //dokle god ima kola na izlazu ili ulazu drzati rampu podignutu da kola prolaze
+ 510   3                              while(izlaz==1 || ulaz==1)
+ 511   3                              {       
+ 512   4                                      //ostaje podignuto
+ 513   4                                      P2_0=0;
+ 514   4                                      P2_1=0;
+ 515   4                                      P2_2=0;
+ 516   4                                      P2_3=1;
+ 517   4      
+ 518   4                                      provera_mesta();
+ 519   4      
+ 520   4                                      if(izlaz==1 && mesto>0)
+ 521   4                                      {
+ 522   5                                              wait5sec();
+ 523   5                                              provera();
+ 524   5      
+ 525   5                                              mesto=mesto-1;
+ 526   5                                              provera_mesta();
+ 527   5                                              ispis();
+ 528   5                                      }
+ 529   4      
+ 530   4                                      if(ulaz==1 && mesto<15)
+ 531   4                                      {
+ 532   5                                              wait5sec();
+ 533   5                                              provera();                                      
+ 534   5      
+ 535   5                                              mesto=mesto+1;
+ 536   5                                              provera_mesta();
+ 537   5                                              ispis();
+ 538   5                                      }
+ 539   4      
+ 540   4                                      }
+ 541   3      
+ 542   3                                              //spustanje
+ 543   3                                              P2_0=1;
+ 544   3                                              P2_1=0;
+ 545   3                                              P2_2=0;
+ 546   3                                              P2_3=0;
+ 547   3                                              wait1sec();
+ 548   3                                              wait1sec();
+ 549   3      
+ 550   3                                              //spusteno
+C51 COMPILER V8.16   PARKING                                                               01/10/2023 15:56:31 PAGE 10  
+
+ 551   3                                              P2_0=0;
+ 552   3                                              P2_1=0;
+ 553   3                                              P2_2=1;
+ 554   3                                              P2_3=0; 
+ 555   3                                                      
+ 556   3                                      }
+ 557   2      
+ 558   2                      //ulazak u parking
+ 559   2                      if(ulaz==1 && mesto<15)
+ 560   2                      {
+ 561   3                              //podizanje
+ 562   3                              P2_0=0;
+ 563   3                              P2_1=1;
+ 564   3                              P2_2=0;
+ 565   3                              P2_3=0;
+ 566   3                              wait1sec();
+ 567   3                              wait1sec();
+ 568   3                              //stiglo do vrha
+ 569   3                              P2_0=0;
+ 570   3                              P2_1=0;
+ 571   3                              P2_2=0;
+ 572   3                              P2_3=1; 
+ 573   3      
+ 574   3                              wait5sec();
+ 575   3                              provera();
+ 576   3      
+ 577   3                              mesto=mesto+1;
+ 578   3                              provera_mesta();
+ 579   3                              ispis();
+ 580   3      
+ 581   3                              //dokle god ima kola na izlazu ili ulazu drzati rampu podignutu da kola prolaze
+ 582   3                              while(izlaz==1 || ulaz==1)
+ 583   3                              {       
+ 584   4                                      //ostaje podignuto
+ 585   4                                      P2_0=0;
+ 586   4                                      P2_1=0;
+ 587   4                                      P2_2=0;
+ 588   4                                      P2_3=1;
+ 589   4      
+ 590   4                                      provera_mesta();
+ 591   4      
+ 592   4                                      if(izlaz==1 && mesto>0)
+ 593   4                                      {
+ 594   5                                              wait5sec();
+ 595   5                                              provera();
+ 596   5      
+ 597   5                                              mesto=mesto-1;
+ 598   5                                              provera_mesta();
+ 599   5                                              ispis();
+ 600   5                                      }
+ 601   4      
+ 602   4                                      if(ulaz==1 && mesto<15)
+ 603   4                                      {
+ 604   5                                              wait5sec();
+ 605   5                                              provera();                                      
+ 606   5      
+ 607   5                                              mesto=mesto+1;
+ 608   5                                              provera_mesta();
+ 609   5                                              ispis();
+ 610   5                                      }
+ 611   4      
+ 612   4                                      }
+C51 COMPILER V8.16   PARKING                                                               01/10/2023 15:56:31 PAGE 11  
+
+ 613   3      
+ 614   3                                              //spustanje
+ 615   3                                              P2_0=1;
+ 616   3                                              P2_1=0;
+ 617   3                                              P2_2=0;
+ 618   3                                              P2_3=0;
+ 619   3                                              wait1sec();
+ 620   3                                              wait1sec();
+ 621   3      
+ 622   3                                              //spusteno
+ 623   3                                              P2_0=0;
+ 624   3                                              P2_1=0;
+ 625   3                                              P2_2=1;
+ 626   3                                              P2_3=0; 
+ 627   3                                                      
+ 628   3                                      }
+ 629   2                              }
+ 630   1                      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1667    ----
+   CONSTANT SIZE    =     93    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     27      37
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----       1
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
